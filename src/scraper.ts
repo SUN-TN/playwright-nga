@@ -2,7 +2,7 @@ import { Browser, BrowserContext, chromium, Page } from 'playwright';
 import { ScrapeConfig, UserInfo } from './types.js';
 
 const NGA_BASE = 'https://bbs.nga.cn';
-const PAGE_SIZE = 20; // NGA 每页 20 楼
+const PAGE_SIZE = 10; // NGA 每页 20 楼
 
 export class NgaScraper {
   private browser: Browser | null = null;
@@ -87,18 +87,18 @@ export class NgaScraper {
 
     while (pageNum <= this.config.maxPages) {
       console.log(`正在爬取第 ${pageNum} 页...`);
-      const users = await this.scrapePage(pageNum);
+      const result = await this.scrapePage(pageNum);
 
-      if (users.length === 0) {
+      if (result.users.length === 0) {
         console.log(`第 ${pageNum} 页无有效数据，爬取结束。`);
         break;
       }
 
-      allPages.push(users);
-      console.log(`  → 获取到 ${users.length} 位用户`);
+      allPages.push(result.users);
+      console.log(`  → 获取到 ${result.users.length} 位用户 (共 ${result.floorCount} 楼)`);
 
-      // 如果当前页用户数 < PAGE_SIZE，说明已是末页
-      if (users.length < PAGE_SIZE) {
+      // 当页楼层数不足 PAGE_SIZE 才是真正的末页
+      if (result.floorCount < PAGE_SIZE) {
         console.log('已到达最后一页。');
         pageNum++;
         break;
@@ -115,8 +115,8 @@ export class NgaScraper {
     return { pages: allPages, totalPages: pageNum - 1 };
   }
 
-  /** 爬取单页用户列表（纯 DOM 提取） */
-  async scrapePage(page: number): Promise<UserInfo[]> {
+  /** 爬取单页用户列表（纯 DOM 提取），返回用户列表和楼层总数 */
+  async scrapePage(page: number): Promise<{ users: UserInfo[]; floorCount: number }> {
     if (!this.page) throw new Error('浏览器未初始化');
 
     const url = `${NGA_BASE}/read.php?tid=${this.config.tid}&page=${page}`;
@@ -129,7 +129,7 @@ export class NgaScraper {
       });
     } catch (err) {
       console.error(`  第 ${page} 页加载失败:`, (err as Error).message);
-      return [];
+      return { users: [], floorCount: 0 };
     }
     await this.sleep(2000);
 
@@ -158,17 +158,18 @@ export class NgaScraper {
    *   （例如 <b>z</b>heshiasd  → 用户名为 "heshiasd"）
    * - UID：优先取同楼层 a[name="uid"] 的文本内容，回退从 href 中正则提取
    */
-  private async extractUsersFromDOM(): Promise<UserInfo[]> {
-    if (!this.page) return [];
+  private async extractUsersFromDOM(): Promise<{ users: UserInfo[]; floorCount: number }> {
+    if (!this.page) return { users: [], floorCount: 0 };
 
     try {
-      const users = await this.page.evaluate(() => {
-        const result: { uid: number; username: string }[] = [];
+      const result = await this.page.evaluate(() => {
+        const users: { uid: number; username: string }[] = [];
         const seen = new Set<number>();
 
         const authorLinks = document.querySelectorAll<HTMLAnchorElement>(
           'a.userlink.author[href*="uid="]',
         );
+        const floorCount = authorLinks.length; // 去重前楼层总数
 
         for (const link of authorLinks) {
           // ── 提取 UID ──
@@ -211,16 +212,16 @@ export class NgaScraper {
           if (/^\d+$/.test(username)) continue;
 
           seen.add(uid);
-          result.push({ uid, username });
+          users.push({ uid, username });
         }
 
-        return result;
+        return { users, floorCount };
       });
 
-      return users;
+      return result;
     } catch (err) {
       console.error('  DOM 提取失败:', (err as Error).message);
-      return [];
+      return { users: [], floorCount: 0 };
     }
   }
 
