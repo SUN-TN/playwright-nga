@@ -1,0 +1,17 @@
+{
+  "name": "playwright-nga-scraper",
+  "version": "1.0.0",
+  "description": "使用 Playwright + TypeScript 爬取 NGA 帖子用户信息",
+  "type": "module",
+  "scripts": {
+    "scrape": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.52.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
