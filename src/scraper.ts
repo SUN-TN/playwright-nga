@@ -8,7 +8,7 @@ export class NgaScraper {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
-  private config: Required<ScrapeConfig>;
+  private config: Omit<Required<ScrapeConfig>, 'useSystemProfile'> & { useSystemProfile?: boolean };
 
   constructor(config: ScrapeConfig) {
     this.config = {
@@ -17,21 +17,65 @@ export class NgaScraper {
       pageDelay: config.pageDelay ?? 2000,
       maxPages: config.maxPages ?? 999,
       outputFile: config.outputFile ?? '',
+      useSystemProfile: config.useSystemProfile,
     };
   }
 
   /** 启动浏览器 */
   async initialize(): Promise<void> {
-    this.browser = await chromium.launch({
-      headless: this.config.headless,
-    });
-    this.context = await this.browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      userAgent:
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    });
+    if (this.config.useSystemProfile) {
+      // 持久化配置模式：cookie 保存在 ~/.nga-scraper-profile，首次需手动登录
+      const userDataDir = `${process.env.HOME}/.nga-scraper-profile`;
+      console.log(`持久化配置目录: ${userDataDir}`);
+      console.log(`（首次使用需在浏览器中手动登录 NGA，后续自动复用）`);
+      this.context = await chromium.launchPersistentContext(userDataDir, {
+        headless: false,
+        viewport: { width: 1920, height: 1080 },
+      });
+      this.browser = this.context.browser()!;
+    } else {
+      // 普通模式：启动新浏览器
+      this.browser = await chromium.launch({
+        headless: this.config.headless,
+      });
+      this.context = await this.browser.newContext({
+        viewport: { width: 1920, height: 1080 },
+        userAgent:
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      });
+    }
     this.page = await this.context.newPage();
     this.page.setDefaultTimeout(30_000);
+  }
+
+  /** 检测并等待 NGA 登录（持久化模式专用） */
+  async ensureLoggedIn(): Promise<void> {
+    if (!this.page) return;
+
+    const tidUrl = `${NGA_BASE}/read.php?tid=${this.config.tid}`;
+    console.log(`\n正在打开 NGA 帖子...`);
+    await this.page.goto(tidUrl, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+
+    // 检查是否需要登录（NGA 未登录会跳转到登录页或显示登录提示）
+    const url = this.page.url();
+    const isLoginPage = url.includes('login') || url.includes('nuke.php');
+
+    if (isLoginPage) {
+      console.log('\n⚠️  检测到未登录 NGA！');
+      console.log('请在浏览器中手动登录 NGA...');
+      console.log('登录完成后，在终端按 Enter 键继续...\n');
+
+      // 等待用户输入
+      await new Promise<void>((resolve) => {
+        process.stdin.once('data', () => resolve());
+      });
+
+      // 重新导航到帖子
+      console.log('正在验证登录状态...');
+      await this.page.goto(tidUrl, { waitUntil: 'domcontentloaded' });
+    } else {
+      console.log('已登录，继续爬取...');
+    }
   }
 
   /** 遍历所有页面并返回去重后的用户列表 */
@@ -184,7 +228,9 @@ export class NgaScraper {
   async destroy(): Promise<void> {
     if (this.page) await this.page.close().catch(() => {});
     if (this.context) await this.context.close().catch(() => {});
-    if (this.browser) await this.browser.close().catch(() => {});
+    if (!this.config.useSystemProfile && this.browser) {
+      await this.browser.close().catch(() => {});
+    }
   }
 
   private sleep(ms: number): Promise<void> {

@@ -16,6 +16,8 @@ export interface ScrapeConfig {
   maxPages?: number;
   /** 输出文件路径（可选），不传则只打印到控制台 */
   outputFile?: string;
+  /** 使用宿主 Chrome 配置文件（含 cookie）。需先退出 Chrome */
+  useSystemProfile?: boolean;
 }
 
 /** 爬取结果 */

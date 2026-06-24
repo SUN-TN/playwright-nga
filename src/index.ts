@@ -14,15 +14,16 @@ NGA 帖子用户爬虫工具
   --headless <boolean> 是否无头模式 (默认 true)
   --delay <number>     翻页间隔毫秒数 (默认 2000)
   --max-pages <number> 最大爬取页数 (默认 999)
-  --output <path>      输出 JSON 文件路径 (可选)
+  --output <path>      输出 JSON 文件路径（默认自动生成到 output/ 目录）
   --no-headless        关闭无头模式，可视化浏览器操作
+  --use-system-profile 使用宿主 Chrome 配置文件（复用 cookie，需先退出 Chrome）
   --help               显示此帮助
 
 示例:
   tsx src/index.ts --tid 45974302
   tsx src/index.ts --tid 45974302 --output ./output/result.json
   tsx src/index.ts --tid 45974302 --no-headless --delay 3000
-`);
+  tsx src/index.ts --tid 45974302 --use-system-profile`);
 }
 
 function parseArgs(): ScrapeConfig | null {
@@ -63,7 +64,18 @@ function parseArgs(): ScrapeConfig | null {
     return null;
   }
 
-  return { tid, headless, pageDelay: delay, maxPages, outputFile };
+  // --use-system-profile
+  const useSystemProfile = args.includes('--use-system-profile');
+
+  return { tid, headless, pageDelay: delay, maxPages, outputFile, useSystemProfile };
+}
+
+/** 生成默认输出文件路径：output/tid_{tid}_{YYYY-MM-DD_HH-mm-ss}.json */
+function defaultOutputPath(tid: number): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  return `output/tid_${tid}_${ts}.json`;
 }
 
 async function main(): Promise<void> {
@@ -76,7 +88,13 @@ async function main(): Promise<void> {
 
   try {
     await scraper.initialize();
-    console.log(`开始爬取 NGA 帖子 tid=${config.tid}...\n`);
+
+    // 持久化模式下先检测登录状态
+    if (config.useSystemProfile) {
+      await scraper.ensureLoggedIn();
+    } else {
+      console.log(`开始爬取 NGA 帖子 tid=${config.tid}...\n`);
+    }
 
     const { pages, totalPages } = await scraper.getAllPages();
     const allUsers = mergeUsers(pages);
@@ -99,10 +117,9 @@ async function main(): Promise<void> {
     console.log(`去重用户数: ${allUsers.length}`);
     printUsers(allUsers);
 
-    // 保存到文件
-    if (config.outputFile) {
-      await saveResult(result, config.outputFile);
-    }
+    // 保存到文件（默认按日期时间自动命名）
+    const outputFile = config.outputFile || defaultOutputPath(config.tid);
+    await saveResult(result, outputFile);
   } catch (err) {
     console.error('爬取出错:', err);
     process.exit(1);
