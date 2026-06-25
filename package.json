@@ -4,7 +4,8 @@
   "description": "使用 Playwright + TypeScript 爬取 NGA 帖子用户信息",
   "type": "module",
   "scripts": {
-    "scrape": "tsx src/index.ts"
+    "scrape": "tsx src/index.ts",
+    "filter": "tsx filter.ts"
   },
   "dependencies": {
     "playwright": "^1.52.0"

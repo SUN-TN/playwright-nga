@@ -199,12 +199,15 @@ export class NgaScraper {
           // ── 提取用户名 ──
           // 遍历 childNodes，跳过 <b> 元素，只取纯文本节点
           // DOM: <a><b>z</b>heshiasd</a> → 用户名: "heshiasd"
-          let username = '';
-          for (const node of link.childNodes) {
-            if (node.nodeType === Node.TEXT_NODE) {
-              username += (node as Text).wholeText;
-            }
-          }
+          let username = link.textContent || ''
+        //   console.dir(link);
+        //   console.dir(link.childNodes);
+        //   debugger
+        //   for (const node of link.childNodes) {
+        //     if (node.nodeType === Node.TEXT_NODE) {
+        //       username += (node as Text).wholeText || (node as HTMLElement).innerText;
+        //     }
+        //   }
           username = username.trim();
           if (!username) continue;
 
