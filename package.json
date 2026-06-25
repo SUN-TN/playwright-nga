@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "scrape": "tsx src/index.ts",
-    "filter": "tsx filter.ts"
+    "scrape:author": "tsx src/author-index.ts",
+    "debug:scrape": "tsx src/debug-author-scrape.ts",
+    "filter": "tsx filter.ts",
+    "analyze": "tsx src/analyzer/pipeline.ts"
   },
   "dependencies": {
     "playwright": "^1.52.0"
